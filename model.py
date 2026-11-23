@@ -3,7 +3,7 @@
 import torch
 import torch.nn.functional as F
 
-from data import block_size, get_example_train_set, vocab_size
+from data import BLOCK_SIZE, get_data_batch, vocab_size
 
 torch.manual_seed(42)
 
@@ -12,57 +12,61 @@ n_embd_sqrt = n_embd ** 0.5
 
 # --- Parameters: everything the model learns. Created once. ---
 
-# [vocab_size, n_embd]
 token_embedding_table = torch.randn(vocab_size, n_embd)
-# [block_size, n_embd]
-position_embedding_table = torch.randn(block_size, n_embd)
-# [n_embd, n_embd]
+position_embedding_table = torch.randn(BLOCK_SIZE, n_embd)
 W_q = torch.randn(n_embd, n_embd) / n_embd_sqrt
 W_k = torch.randn(n_embd, n_embd) / n_embd_sqrt
 W_v = torch.randn(n_embd, n_embd) / n_embd_sqrt
-# [n_embd, vocab_size]
 W_out = torch.randn(n_embd, vocab_size) / n_embd_sqrt
 
 
 def forward(x: torch.Tensor) -> torch.Tensor:
-    """x: token ids [T] -> logits [T, vocab_size]."""
-    T = len(x)
+    """x: B BATCH_SIZE of T token ids  [B, T] -> logits [B, T, vocab_size]."""
+    # x: [B, T]
+    B, T = x.shape
+
+    # token_embedding: [B, T, n_embd]
     token_embedding = token_embedding_table[x]
+
+    # pos: [T]
     pos = torch.arange(T)
+    # pos_embedding: [T, n_embd]
     pos_embedding = position_embedding_table[pos]
-    # [T, n_embd]
+    # h: [B, T, n_embd] + [T, n_embd] = [B, T, n_embd] (broadcasting)
     h = token_embedding + pos_embedding
 
-    # [T, n_embd]
+    # q, k, v: [B, T, n_embd] @ [n_embd, n_embd] = [B, T, n_embd] (broadcasting)
     q = h @ W_q
     k = h @ W_k
     v = h @ W_v
 
-    scores = q @ k.T / n_embd_sqrt
+    # k_transposed: [B, n_embd, T]
+    k_transposed = torch.transpose(k, 1, 2)
+    # scores: [B, T, T]
+    scores = q @ k_transposed / n_embd_sqrt
+    # mask: [T, T]
     mask = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1)
     scores = scores.masked_fill(mask, float("-inf"))
-    scores = scores - scores.max(dim=1, keepdim=True).values
+    scores = scores - scores.max(dim=-1, keepdim=True).values
 
-    # softmax  [T, T]
+    # softmax weights: [B, T, T]
     weights = torch.exp(scores)
-    weights = weights / torch.sum(weights, dim=1, keepdim=True)
+    weights = weights / torch.sum(weights, dim=-1, keepdim=True)
 
-    # [T, n_embd]
+    # out: [B, T, T] @ [B, T, n_embd] = [B, T, n_embd]
     out = weights @ v
 
-    # logits: [T, vocab_size]
+    # logits: [B, T, n_embd] @ [n_embd, vocab_size] = [B, T, vocab_size] (broadcasting)
     return out @ W_out
 
 
 if __name__ == "__main__":
-    x, y = get_example_train_set(0)
-    x, y = torch.tensor(x), torch.tensor(y)
-
-    logits = forward(x)
-    loss = F.cross_entropy(logits, y)
+    x, y = get_data_batch(torch.tensor([0]))  # batch of one chunk: [1, T]
+    logits = forward(x).view(-1, vocab_size)
+    loss = F.cross_entropy(logits, y.view(-1))
 
     print("logits.shape:", logits.shape)
     print("loss:", loss.item())
-    assert logits.shape == (len(x), vocab_size)
-    assert abs(loss.item() - 2.56) < 0.01, "loss differs from explore.py: check parameter creation order"
+    assert logits.shape == (x.numel(), vocab_size)
+    assert abs(loss.item() - 2.56) < 0.01, "loss is unexpected"
     print("OK")

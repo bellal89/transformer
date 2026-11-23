@@ -1,4 +1,5 @@
 """Character-level data for a minimal transformer."""
+import torch
 
 text = "hello world! " * 20  # toy text for now
 
@@ -23,18 +24,25 @@ def decode(ids: list[int]) -> str:
 
 # Train set
 data = encode(text)
-block_size = 8  # how many tokens the model sees in one pass
+BLOCK_SIZE = 8  # how many tokens the model sees in one pass
 
 
-def get_example_train_set(i: int) -> tuple[list[int], list[int]]:
-    """Return (x, y) starting at position i in data.
+def get_data_batch(ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """ids: start positions [B] -> (x, y), each [B, BLOCK_SIZE].
 
-    x: block_size tokens the model sees;
-    y: the same tokens shifted by 1 (targets to predict).
+    x: tokens the model sees; y: the same tokens shifted by 1 (targets).
     """
-    assert len(data) > i + block_size
-    x = data[i: i+block_size]
-    y = data[i+1: i+block_size+1]
+    assert ids.min() >= 0 and len(data) > ids.max() + BLOCK_SIZE
+    x_batch = torch.stack([torch.tensor(data[i:i + BLOCK_SIZE]) for i in ids])
+    y_batch = torch.stack([torch.tensor(data[i+1: i + BLOCK_SIZE + 1]) for i in ids])
+    return x_batch, y_batch
+
+
+def get_data_example(i: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """i: start position -> (x, y), each [BLOCK_SIZE]. See get_train_batch."""
+    assert 0 <= i and len(data) > i + BLOCK_SIZE
+    x = torch.tensor(data[i:i + BLOCK_SIZE])
+    y = torch.tensor(data[i+1: i + BLOCK_SIZE + 1])
     return x, y
 
 
@@ -42,6 +50,8 @@ if __name__ == "__main__":
     print(chars, vocab_size)
     print(stoi, itos)
     assert decode(encode("hello")) == "hello"
-    x, y = get_example_train_set(0)
-    print("x:", x, repr(decode(x)))
-    print("y:", y, repr(decode(y)))
+    x, y = get_data_example(0)
+    print("x:", x, repr(decode(x.tolist())))
+    print("y:", y, repr(decode(y.tolist())))
+    xb, yb = get_data_batch(torch.tensor([0, 1]))
+    print("batch x:", xb.shape, [decode(r.tolist()) for r in xb])
