@@ -1,0 +1,9 @@
+# environment and cache
+.venv/
+__pycache__/
+
+# IDE
+.idea/
+
+# scratch files, not for the repo
+explore.py
