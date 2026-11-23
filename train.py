@@ -1,6 +1,6 @@
 """Training loop: forward -> loss -> gradients -> update weights, repeated."""
 
-    import torch
+import torch
 import torch.nn.functional as functions
 
 import model
@@ -19,12 +19,12 @@ params = [
     model.W_out,
 ]
 
-# TODO: make PyTorch track gradients for each parameter
-#       (hint: p.requires_grad_(True))
+# make PyTorch track gradients for each parameter
 for p in params:
     p.requires_grad_(True)
 
 
+# flattens batch into shape ([B x T, vocab_size], [B x T]) then averages B x T losses
 def get_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return functions.cross_entropy(
             logits.view(-1, model.vocab_size),
@@ -41,25 +41,23 @@ def estimate_loss() -> torch.Tensor:
 
 
 for step in range(STEPS + 1):
-    # batch of random text chunks
+    # batch of random text chunks to smooth the train loss curve
     random_ids = torch.randint(0, len(data) - BLOCK_SIZE, (BATCH_SIZE,))
-    train_x, train_y = get_data_batch(random_ids)
+    batch_x, batch_y = get_data_batch(random_ids)
 
-    # TODO 2. forward pass and loss (as in model.py)
-    train_logits = model.forward(train_x)
-    train_loss = get_loss(train_logits, train_y)
+    # forward pass and loss
+    batch_logits = model.forward(batch_x)
+    train_loss = get_loss(batch_logits, batch_y)
 
-    # TODO 3. reset old gradients: p.grad = None for each parameter
-    #         (otherwise backward adds new gradients to the old ones)
+    # reset old gradients, or otherwise backward adds new gradients to the old ones
     for p in params:
         p.grad = None
 
-    # TODO 4. compute gradients: loss.backward()
+    # compute gradients
     train_loss.backward()
 
-    # TODO 5. move each parameter against its gradient: p = p - LEARNING_RATE * p.grad
-    #         Do it in place (p -= ...) inside `with torch.no_grad():`,
-    #         so the update itself is not recorded in the autograd graph.
+    # Adjust weight matrices: move each parameter against its gradient
+    # Do it in place (p -= ...) inside `with torch.no_grad()`, so the update itself is not recorded in the autograd graph
     with torch.no_grad():
         for p in params:
             p -= LEARNING_RATE * p.grad
