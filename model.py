@@ -1,9 +1,11 @@
 """Minimal transformer: parameters + forward pass."""
 
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 
-from data import BLOCK_SIZE, get_data_batch, vocab_size, encode, decode
+from data import BLOCK_SIZE, DATASET, get_data_batch, vocab_size, encode, decode
 
 torch.manual_seed(42)
 
@@ -18,6 +20,24 @@ W_q = torch.randn(n_embd, n_embd) / n_embd_sqrt
 W_k = torch.randn(n_embd, n_embd) / n_embd_sqrt
 W_v = torch.randn(n_embd, n_embd) / n_embd_sqrt
 W_out = torch.randn(n_embd, vocab_size) / n_embd_sqrt
+
+PARAM_NAMES = ["token_embedding_table", "position_embedding_table", "W_q", "W_k", "W_v", "W_out"]
+# One checkpoint per dataset: vocab depends on the dataset
+CHECKPOINT = Path(__file__).parent / "checkpoints" / f"{Path(DATASET).stem}.pt"
+
+
+def save(path: Path = CHECKPOINT) -> None:
+    """Save trained parameters."""
+    path.parent.mkdir(exist_ok=True)
+    torch.save({name: globals()[name] for name in PARAM_NAMES}, path)
+
+
+@torch.no_grad()
+def load(path: Path = CHECKPOINT) -> None:
+    """Load trained parameters in place."""
+    state = torch.load(path)
+    for name in PARAM_NAMES:
+        globals()[name].copy_(state[name])
 
 
 def forward(x: torch.Tensor) -> torch.Tensor:

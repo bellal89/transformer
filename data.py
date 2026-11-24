@@ -1,7 +1,12 @@
 """Character-level data for a minimal transformer."""
+import os
+from pathlib import Path
+
 import torch
 
-text = "hello world! " * 20  # toy text for now
+# Dataset file in datasets/, override with env var: DATASET=other.txt
+DATASET = os.environ.get("DATASET", "hello.txt")
+text = (Path(__file__).parent / "datasets" / DATASET).read_text()
 
 # Sorted list of unique tokens in text (here just symbols)
 chars = sorted(set(text))
@@ -39,7 +44,7 @@ def get_data_batch(ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def get_data_example(i: int) -> tuple[torch.Tensor, torch.Tensor]:
-    """i: start position -> (x, y), each [BLOCK_SIZE]. See get_train_batch."""
+    """i: start position -> (x, y), each [BLOCK_SIZE]. See get_data_batch."""
     assert 0 <= i and len(data) > i + BLOCK_SIZE
     x = torch.tensor(data[i:i + BLOCK_SIZE])
     y = torch.tensor(data[i+1: i + BLOCK_SIZE + 1])

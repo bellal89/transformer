@@ -66,6 +66,9 @@ for step in range(STEPS + 1):
         est_loss = estimate_loss()
         print(f"step {step:5d}   loss {est_loss:.3f}")
 
+model.save()
+print(f"saved to {model.CHECKPOINT}")
+
 
 for t in [0, 0.5, 1, 2, 20]:
     print(f"temperature {t:>4}:", model.generate("l", 30, temperature=t))
