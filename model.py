@@ -3,7 +3,7 @@
 import torch
 import torch.nn.functional as F
 
-from data import BLOCK_SIZE, get_data_batch, vocab_size
+from data import BLOCK_SIZE, get_data_batch, vocab_size, encode, decode
 
 torch.manual_seed(42)
 
@@ -58,6 +58,22 @@ def forward(x: torch.Tensor) -> torch.Tensor:
 
     # logits: [B, T, n_embd] @ [n_embd, vocab_size] = [B, T, vocab_size] (broadcasting)
     return out @ W_out
+
+
+@torch.no_grad()
+def generate(prefix: str, n: int, temperature: float = 0.0) -> str:
+    answer = prefix
+    for i in range(n):
+        block = encode(answer)[-BLOCK_SIZE:]
+        x = torch.tensor(block).unsqueeze(0)
+        logits = forward(x)[0, -1]
+        if temperature <= 0:
+            y = int(logits.argmax())
+        else:
+            probs = F.softmax(logits / temperature, dim=-1)
+            y = int(torch.multinomial(probs, 1)[0])
+        answer += decode([y])
+    return answer
 
 
 if __name__ == "__main__":

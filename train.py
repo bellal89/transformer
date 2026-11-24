@@ -65,3 +65,7 @@ for step in range(STEPS + 1):
     if step % 250 == 0:
         est_loss = estimate_loss()
         print(f"step {step:5d}   loss {est_loss:.3f}")
+
+
+for t in [0, 0.5, 1, 2, 20]:
+    print(f"temperature {t:>4}:", model.generate("l", 30, temperature=t))
