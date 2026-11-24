@@ -41,43 +41,52 @@ def load(path: Path = CHECKPOINT) -> None:
 
 
 def forward(x: torch.Tensor) -> torch.Tensor:
-    """x: B BATCH_SIZE of T token ids  [B, T] -> logits [B, T, vocab_size]."""
+    """x: a batch of B sequences, T token ids each; [B, T] -> logits [B, T, vocab_size]."""
     # x: [B, T]
     B, T = x.shape
 
-    # token_embedding: [B, T, n_embd]
-    token_embedding = token_embedding_table[x]
+    # token_embeddings: [B, T, n_embd]
+    token_embeddings = token_embedding_table[x]
 
     # pos: [T]
     pos = torch.arange(T)
-    # pos_embedding: [T, n_embd]
-    pos_embedding = position_embedding_table[pos]
-    # h: [B, T, n_embd] + [T, n_embd] = [B, T, n_embd] (broadcasting)
-    h = token_embedding + pos_embedding
+    # pos_embeddings: [T, n_embd]
+    pos_embeddings = position_embedding_table[pos]
+    # embeddings: [B, T, n_embd] + [T, n_embd] = [B, T, n_embd] (broadcasting)
+    embeddings = token_embeddings + pos_embeddings
 
     # q, k, v: [B, T, n_embd] @ [n_embd, n_embd] = [B, T, n_embd] (broadcasting)
-    q = h @ W_q
-    k = h @ W_k
-    v = h @ W_v
+    q = embeddings @ W_q
+    k = embeddings @ W_k
+    v = embeddings @ W_v
 
     # k_transposed: [B, n_embd, T]
     k_transposed = torch.transpose(k, 1, 2)
-    # scores: [B, T, T]
-    scores = q @ k_transposed / n_embd_sqrt
-    # mask: [T, T]
-    mask = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1)
-    scores = scores.masked_fill(mask, float("-inf"))
-    scores = scores - scores.max(dim=-1, keepdim=True).values
+    # attention_scores: [B, T, T]
+    attention_scores = q @ k_transposed / n_embd_sqrt
 
-    # softmax weights: [B, T, T]
-    weights = torch.exp(scores)
-    weights = weights / torch.sum(weights, dim=-1, keepdim=True)
+    # look_ahead_mask: [T, T]
+    # prevents looking ahead, must be applied before softmax
+    look_ahead_mask = torch.triu(torch.ones(T, T, dtype=torch.bool), diagonal=1)
+    attention_scores = attention_scores.masked_fill(look_ahead_mask, float("-inf"))
 
-    # out: [B, T, T] @ [B, T, n_embd] = [B, T, n_embd]
-    out = weights @ v
+    # subtract row max to avoid exp overflow (softmax is shift-invariant)
+    attention_scores = attention_scores - attention_scores.max(dim=-1, keepdim=True).values
+
+    # softmax over the last dim: e^x_i / sum_j e^x_j  (each row sums to 1)
+    # attention_weights: [B, T, T]
+    attention_weights = torch.exp(attention_scores)
+    attention_weights = attention_weights / torch.sum(attention_weights, dim=-1, keepdim=True)
+
+    # for the current token attention helps to focus the model on the most important prev tokens (incl. the current one)
+    #     so the more important tokens go to the context with higher weights
+    # W_q, W_k decide which tokens to look at; W_v decides what info each token passes
+    #     (standard transformers have many attention heads, each with its own W_q, W_k, W_v)
+    # context: [B, T, T] @ [B, T, n_embd] = [B, T, n_embd]
+    context = attention_weights @ v
 
     # logits: [B, T, n_embd] @ [n_embd, vocab_size] = [B, T, vocab_size] (broadcasting)
-    return out @ W_out
+    return context @ W_out
 
 
 @torch.no_grad()
